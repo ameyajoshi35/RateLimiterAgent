@@ -1,41 +1,61 @@
 # RateLimiter Agent
 
-A step-by-step LangChain + LangGraph agent that answers questions about rate limiting algorithms. Built as a learning project — each file introduces one concept before combining them all in a full ReAct agent.
+A step-by-step LangChain + LangGraph agent that answers questions about rate limiting algorithms. Built as a learning project — each file introduces one concept before combining them all in a full ReAct agent with RAG and a React chat UI.
+
+## Architecture
+
+```
+frontend/   ←  React + Vite chat UI
+backend/    ←  FastAPI server wrapping the RAG agent
+step*.py    ←  Step-by-step learning files
+```
 
 ## Setup
 
-**Requirements:** Python 3.12+, [uv](https://github.com/astral-sh/uv), a free [Groq API key](https://console.groq.com)
+**Requirements:** Python 3.12+, Node.js 18+, [uv](https://github.com/astral-sh/uv), a free [Groq API key](https://console.groq.com)
 
 ```bash
-# Install dependencies
+# Python dependencies
 uv venv .venv --python 3.12
 uv pip install -r requirements.txt
+
+# Frontend dependencies
+cd frontend && npm install && cd ..
 
 # Set your API key
 export GROQ_API_KEY=your_key_here
 ```
 
-## Run
+## Running the UI
+
+Open two terminals:
+
+**Terminal 1 — Backend:**
+```bash
+cd backend
+GROQ_API_KEY=your_key_here /path/to/.venv/bin/uvicorn main:app --port 8000 --reload
+```
+
+**Terminal 2 — Frontend:**
+```bash
+cd frontend
+npm run dev
+```
+
+Then open **http://localhost:5173** in your browser.
+
+> **Note:** The backend downloads the embedding model (~90MB) on first run. It's cached after that.
+
+## Running the CLI (no UI)
 
 ```bash
-.venv/bin/python step6_rag_agent.py    # full RAG agent (recommended)
+.venv/bin/python step6_rag_agent.py    # full RAG agent
 .venv/bin/python step5_full_agent.py   # agent without RAG
 ```
 
-Or run each step individually to follow the learning path:
-
-```bash
-.venv/bin/python step1_llm_basics.py
-.venv/bin/python step2_prompts_and_chains.py
-.venv/bin/python step3_tools.py
-.venv/bin/python step4_langgraph_intro.py
-.venv/bin/python step5_full_agent.py
-.venv/bin/python step6_rag_agent.py
-```
-
-> **Note:** Step 6 downloads the embedding model (~90MB) on first run. It's cached after that.
-
 ## Learning Path
+
+Run each file in order to build up from scratch:
 
 | File | Concept |
 |---|---|
@@ -46,20 +66,26 @@ Or run each step individually to follow the learning path:
 | `step5_full_agent.py` | Full ReAct loop with LangGraph |
 | `step6_rag_agent.py` | RAG — embeddings, vector store, semantic search |
 
-## How the Agent Works
+## How It Works
 
-### ReAct Loop (steps 5 & 6)
+### React UI
 
-The agent uses the **ReAct** (Reasoning + Acting) pattern — it loops between thinking and calling tools until it has enough information to answer.
+The frontend is a chat interface built with React + Vite:
+- Message bubbles with markdown rendering
+- Suggestion chips on first load for quick questions
+- Typing indicator while the agent is thinking
+- `Enter` to send, `Shift+Enter` for a new line
+
+The frontend talks to the FastAPI backend via `POST /chat`.
+
+### ReAct Agent Loop
 
 ```
 START → [llm] → has tool_calls? → YES → [tools] → back to [llm]
                                 → NO  → END
 ```
 
-### RAG Pipeline (step 6)
-
-RAG (Retrieval-Augmented Generation) lets the agent search a knowledge base instead of relying only on the LLM's training data.
+### RAG Pipeline
 
 ```
 INDEXING (once at startup)
@@ -71,40 +97,42 @@ RETRIEVAL (at query time)
 
 ### Tools
 
-| Tool | Available in | Description |
-|---|---|---|
-| `get_algorithm_info` | Steps 3, 5, 6 | Brief description of a rate limiting algorithm |
-| `recommend_algorithm` | Steps 3, 5, 6 | Recommends an algorithm based on requirements |
-| `calculate_token_bucket` | Steps 3, 5, 6 | Calculates Token Bucket config for a given rate and burst size |
-| `search_knowledge_base` | Step 6 | Semantic search over the rate limiting knowledge base |
+| Tool | Description |
+|---|---|
+| `search_knowledge_base` | Semantic search over the rate limiting knowledge base |
+| `get_algorithm_info` | Brief description of a rate limiting algorithm |
+| `recommend_algorithm` | Recommends an algorithm based on requirements |
+| `calculate_token_bucket` | Calculates Token Bucket config for a given rate and burst size |
 
-### Example (step 6 RAG agent)
+### Example
 
 ```
 User: What HTTP headers should I return when rate limiting an API?
 
-[llm] → search_knowledge_base("HTTP headers rate limiting API")
-      → retrieves chunk from api_best_practices doc:
-        "X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset..."
-[llm] → final answer with retrieved context
+[llm] → search_knowledge_base("HTTP headers rate limiting")
+      → retrieves chunk: "X-RateLimit-Limit, X-RateLimit-Remaining..."
+[llm] → final answer using retrieved context
 ```
 
-## Knowledge Base (step 6)
+## Knowledge Base
 
-The RAG agent indexes 6 documents covering:
+The RAG agent indexes 6 documents:
 
 | Document | Content |
 |---|---|
-| Token Bucket Guide | Deep dive: burst handling, parameters, best use cases |
-| Fixed Window Guide | Boundary spike problem explained with examples |
+| Token Bucket Guide | Burst handling, parameters, best use cases |
+| Fixed Window Guide | Boundary spike problem with examples |
 | Sliding Window Log Guide | Memory trade-offs, precision guarantees |
 | Leaky Bucket Guide | Queue mechanics, comparison with Token Bucket |
 | Distributed Rate Limiting | Redis strategies, sticky sessions, approximate counting |
 | API Best Practices | HTTP headers, HTTP 429, tiered limits, graceful degradation |
 
-## Models
+## Stack
 
-| Step | Model | Reason |
-|---|---|---|
-| Steps 1–2, 4 | `llama-3.3-70b-versatile` | Fast, no tool calling needed |
-| Steps 3, 5, 6 | `meta-llama/llama-4-scout-17b-16e-instruct` | Reliable tool calling |
+| Layer | Technology |
+|---|---|
+| LLM | Groq (`llama-4-scout` for tool calling, `llama-3.3-70b` for text) |
+| Agent framework | LangGraph |
+| RAG | LangChain + HuggingFace embeddings + FAISS |
+| Backend | FastAPI + uvicorn |
+| Frontend | React 18 + Vite + react-markdown |
