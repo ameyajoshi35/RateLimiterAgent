@@ -7,3 +7,5 @@ langchain-text-splitters
 langgraph
 faiss-cpu
 sentence-transformers
+fastapi
+uvicorn
