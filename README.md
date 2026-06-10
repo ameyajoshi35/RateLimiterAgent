@@ -1,11 +1,11 @@
 # RateLimiter Agent
 
-A step-by-step LangChain + LangGraph agent that answers questions about rate limiting algorithms. Built as a learning project — each file introduces one concept before combining them all in a full ReAct agent with RAG and a React chat UI.
+A step-by-step LangChain + LangGraph agent that answers questions about rate limiting algorithms. Built as a learning project — each file introduces one concept before combining them all in a full ReAct agent with RAG, token streaming, and a React chat UI that visualizes the agent loop in real time.
 
 ## Architecture
 
 ```
-frontend/   ←  React + Vite chat UI
+frontend/   ←  React + Vite chat UI with live agent loop visualization
 backend/    ←  FastAPI server wrapping the RAG agent
 step*.py    ←  Step-by-step learning files
 ```
@@ -71,12 +71,59 @@ Run each file in order to build up from scratch:
 ### React UI
 
 The frontend is a chat interface built with React + Vite:
-- Message bubbles with markdown rendering
+- **Agent loop visualization** — every response shows a live pipeline flowchart of the ReAct loop
+- **Token streaming** — answer text types out character by character as the LLM generates it
+- **Typewriter effect** — tokens are queued and released at a human-readable pace
 - Suggestion chips on first load for quick questions
-- Typing indicator while the agent is thinking
 - `Enter` to send, `Shift+Enter` for a new line
 
-The frontend talks to the FastAPI backend via `POST /chat`.
+### Agent Loop Visualization
+
+Each response displays a collapsible **Agent Loop** panel that shows every step the agent takes in real time:
+
+```
+🚀 StateGraph Initialized          [langgraph]
+   StateGraph.compile() · add_messages reducer · messages state
+   ↓
+🧠 LLM Node — Call #1              [langchain]   ← spins while active
+   ChatGroq(llama-4-scout-17b) · bind_tools(4 tools)
+   AIMessage has tool_calls → selected: get_algorithm_info
+   ↓
+◆  Conditional Edge → tools node   [langgraph]
+   add_conditional_edges · tools_condition(state)
+   last message has tool_calls → route to tools
+   ↓
+📖 ToolNode: get_algorithm_info    [langchain]   ← spins while active
+   @tool decorator · returns algorithm description
+   algorithm: token_bucket
+   → Tokens refill at a fixed rate up to a capacity cap...
+   ↓
+🧠 LLM Node — Call #2              [langchain]
+   ChatGroq sees ToolMessage in messages state
+   AIMessage has no tool_calls → generating final answer
+   ↓
+◆  Conditional Edge → END          [langgraph]
+   no tool_calls → route to END
+   ↓
+🏁 Graph END                       [langgraph]
+   messages[-1].content → response
+```
+
+Nodes are color-coded (blue = active, green = done) and each badge identifies which framework feature is responsible.
+
+### SSE Streaming
+
+The backend uses `agent.astream_events(version="v2")` to emit granular events over Server-Sent Events:
+
+| Event | Trigger |
+|---|---|
+| `pipeline: graph_start` | First LLM call detected |
+| `pipeline: llm_start` | `on_chat_model_start` for the `llm` node |
+| `pipeline: llm_end` | `on_chat_model_end` — includes routing decision |
+| `pipeline: tool_start` | `on_tool_start` — includes tool name and args |
+| `pipeline: tool_end` | `on_tool_end` — includes result preview |
+| `pipeline: graph_end` | Stream complete |
+| `token` | `on_chat_model_stream` — individual LLM output tokens |
 
 ### ReAct Agent Loop
 
@@ -131,8 +178,9 @@ The RAG agent indexes 6 documents:
 
 | Layer | Technology |
 |---|---|
-| LLM | Groq (`llama-4-scout` for tool calling, `llama-3.3-70b` for text) |
-| Agent framework | LangGraph |
-| RAG | LangChain + HuggingFace embeddings + FAISS |
+| LLM | Groq (`llama-4-scout-17b` for tool calling, `llama-3.3-70b` for text) |
+| Agent framework | LangGraph — `StateGraph`, `ToolNode`, `add_conditional_edges` |
+| RAG | LangChain + HuggingFace embeddings (`all-MiniLM-L6-v2`) + FAISS |
+| Streaming | `astream_events(version="v2")` → Server-Sent Events |
 | Backend | FastAPI + uvicorn |
 | Frontend | React 18 + Vite + react-markdown |
