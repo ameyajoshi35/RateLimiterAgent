@@ -10,7 +10,7 @@ from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph, START, END
@@ -180,7 +180,7 @@ DOCUMENTS = [
 print("[Agent] Building knowledge base...")
 splitter   = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
 chunks     = splitter.split_documents(DOCUMENTS)
-embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
 vector_store = FAISS.from_documents(chunks, embeddings)
 retriever    = vector_store.as_retriever(search_kwargs={"k": 3})
 print(f"[Agent] {len(chunks)} chunks indexed.")
